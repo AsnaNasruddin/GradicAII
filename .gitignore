@@ -1,0 +1,48 @@
+# This root .gitignore is a safety net on top of backend/.gitignore and
+# frontend/.gitignore — those two are authoritative for their own folders.
+
+# Editor / tool local state (not project config)
+.claude/
+.vscode/
+.idea/
+
+# OS junk
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+ENV/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Environment variables — never commit real secrets
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.sqlite3
+
+# Backend runtime data (user uploads, OCR cache) — regenerated at runtime
+backend/uploads/
+backend/private_cache/
+
+# Logs
+*.log
+npm-debug.log*
