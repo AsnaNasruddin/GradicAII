@@ -213,7 +213,7 @@ export default function Assignments() {
                         <p className="text-sm font-medium text-slate-700">
                           {reviewSub.answer_sheet_url.match(/\.(pdf)$/i) ? 'PDF Document' : 'Image File'}
                         </p>
-                        <a href={`http://localhost:8000${reviewSub.answer_sheet_url}`} target="_blank" rel="noreferrer"
+                        <a href={`${api.defaults.baseURL}${reviewSub.answer_sheet_url}`} target="_blank" rel="noreferrer"
                           className="text-sm text-primary hover:underline font-medium">
                           View / Download →
                         </a>

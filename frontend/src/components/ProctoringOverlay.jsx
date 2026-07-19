@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Smartphone, BookOpen, Users, UserX, Shuffle, AlertTriangle } from 'lucide-react'
 
-const WS_URL = 'ws://localhost:8001/ws'
+const WS_URL = import.meta.env.VITE_PROCTORING_WS_URL || 'ws://localhost:8001/ws'
 
 function buildWsUrl(sessionKey, examId, studentId) {
   return `${WS_URL}/${sessionKey}?exam_id=${examId || 0}&student_id=${studentId || 0}`

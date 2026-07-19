@@ -525,7 +525,7 @@ export default function GradeManagement() {
                     <p className="text-xs font-semibold text-rose-500 uppercase tracking-wide mb-2">Violation Screenshots ({reviewScreenshots.length})</p>
                     <div className="grid grid-cols-2 gap-2">
                       {reviewScreenshots.map((url, i) => (
-                        <img key={i} src={`http://localhost:8000${url}`} alt={`Violation ${i+1}`}
+                        <img key={i} src={`${api.defaults.baseURL}${url}`} alt={`Violation ${i+1}`}
                           className="w-full rounded-lg border border-rose-200 object-cover" style={{height:'120px'}} />
                       ))}
                     </div>

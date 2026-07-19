@@ -6,7 +6,7 @@ import ProctoringOverlay from './ProctoringOverlay'
 import { useAuth } from '../context/AuthContext'
 import { useNotification } from '../context/NotificationContext'
 
-const API_BASE = 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 function formatTime(secs) {
   const h = Math.floor(secs / 3600)

@@ -14,7 +14,9 @@ from dotenv import load_dotenv
 import httpx
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-load_dotenv(os.path.join(os.path.dirname(__file__), "..", "backend", ".env"))
+# Load env vars: Render injects them directly; for local dev, fall back to backend/.env
+load_dotenv()  # picks up Render env vars or local .env in cwd
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", "backend", ".env"))  # local dev fallback
 
 from detector import analyze_frame, get_model
 
@@ -22,15 +24,18 @@ app = FastAPI(title="GradicAI Proctoring Service", version="1.0.0")
 
 INTERNAL_KEY = os.getenv("PROCTORING_INTERNAL_KEY", "")
 
+ALLOWED_ORIGINS = [o for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",") if o]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"(http://(localhost|127\.0\.0\.1):\d+)|(https://.*\.vercel\.app)",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-MAIN_API = "http://localhost:8000"
+MAIN_API = os.getenv("MAIN_API_URL", "http://localhost:8000")
 
 # In-memory session state: session_id → {warning_count, terminated}
 sessions: dict = {}
