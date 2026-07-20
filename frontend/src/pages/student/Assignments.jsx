@@ -105,6 +105,7 @@ export default function StudentAssignments() {
   const fetchData = () =>
     Promise.all([api.get('/assignments/'), api.get('/assignments/my-submissions')])
       .then(([a, s]) => { setAssignments(a.data); setSubmissions(s.data) })
+      .catch((err) => showToast(getErrorMessage(err, 'Failed to load assignments'), 'error'))
       .finally(() => setLoading(false))
 
   useEffect(() => { fetchData() }, [])
@@ -114,7 +115,9 @@ export default function StudentAssignments() {
     const hasProcessing = submissions.some(s => s.status === 'processing')
     if (!hasProcessing) return
     const id = setInterval(() => {
-      api.get('/assignments/my-submissions').then(r => setSubmissions(r.data))
+      api.get('/assignments/my-submissions')
+        .then(r => setSubmissions(r.data))
+        .catch(err => console.error('Failed to refresh submission status', err))
     }, 5000)
     return () => clearInterval(id)
   }, [submissions])

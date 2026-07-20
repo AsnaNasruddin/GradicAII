@@ -1,5 +1,6 @@
 import os
 import base64
+import binascii
 import json
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Header
@@ -25,7 +26,8 @@ def verify_internal_key(x_internal_key: Optional[str] = Header(None)):
     if not INTERNAL_KEY or x_internal_key != INTERNAL_KEY:
         raise HTTPException(status_code=401, detail="Invalid or missing internal service key")
 
-SCREENSHOT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads", "proctoring_screenshots")
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")  # persistent-disk path in production
+SCREENSHOT_DIR = os.path.join(UPLOAD_DIR, "proctoring_screenshots")
 os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 
 
@@ -39,7 +41,11 @@ def save_screenshot(b64_frame: str) -> Optional[str]:
         with open(filepath, "wb") as f:
             f.write(raw)
         return f"/uploads/proctoring_screenshots/{filename}"
-    except Exception:
+    except (binascii.Error, ValueError, OSError) as e:
+        # Expected failure modes only — malformed base64 or a disk/file error. A
+        # bare `except Exception` here would also silently swallow an unrelated
+        # programming bug and make it indistinguishable from a corrupt frame.
+        print(f"[proctoring] screenshot save failed: {e}")
         return None
 
 
@@ -176,8 +182,8 @@ def get_screenshots(
     if block and block.screenshot_urls:
         try:
             screenshots = json.loads(block.screenshot_urls)
-        except Exception:
-            pass
+        except json.JSONDecodeError as e:
+            print(f"[proctoring] corrupt screenshot_urls for block {block.id}: {e}")
 
     # Also check proctoring events directly
     session = db.query(models.ProctoringSession).filter(

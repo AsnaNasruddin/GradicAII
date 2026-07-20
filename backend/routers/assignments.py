@@ -18,7 +18,7 @@ from services.datetime_utils import parse_utc_datetime, iso_utc
 
 router = APIRouter()
 
-UPLOAD_DIR = "uploads"
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")  # persistent-disk path in production
 
 
 def save_file(file: UploadFile, subfolder: str) -> str:
@@ -27,8 +27,11 @@ def save_file(file: UploadFile, subfolder: str) -> str:
     filename = f"{uuid.uuid4()}{ext}"
     path = os.path.join(UPLOAD_DIR, subfolder, filename)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+    try:
+        with open(path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+    except OSError:
+        raise HTTPException(status_code=500, detail="Failed to save uploaded file, please try again")
     return f"/uploads/{subfolder}/{filename}"
 
 
@@ -72,6 +75,7 @@ def run_ai_grading(submission_id: int):
             )
             sub.question_analysis = json.dumps([])
             sub.status = "needs_review"  # no real evaluation happened — distinct from a graded, pending-approval submission
+            db.commit()
             return
 
         prompt = f"""You are an expert examiner. Grade the student's assignment strictly according to the marking scheme.
@@ -131,13 +135,20 @@ Respond ONLY with valid JSON in this exact format:
         # confidence or suspicious flags mean this needs closer teacher scrutiny
         # before being treated as an ordinary pending-approval grade.
         sub.status = "flagged" if (confidence < 0.6 or flags) else "pending_review"
+        db.commit()
 
     except Exception as e:
-        sub.ai_score = 0
-        sub.ai_feedback = f"AI grading failed: {str(e)}"
-        sub.status = "needs_review"
+        try:
+            sub.ai_score = 0
+            sub.ai_feedback = f"AI grading failed: {str(e)}"
+            sub.status = "needs_review"
+            db.commit()
+        except Exception as inner_e:
+            print(
+                f"[run_ai_grading] assignment submission {submission_id} stuck: "
+                f"commit of failure-status also failed: {inner_e}; original error: {e}"
+            )
     finally:
-        db.commit()
         db.close()
 
 
@@ -249,6 +260,8 @@ def teacher_review(
             raise HTTPException(status_code=400, detail="final_score required for manual grading")
         sub.status = "graded"
         sub.final_score = final_score
+    else:
+        raise HTTPException(status_code=400, detail="action must be approve, override, or manual_grade")
 
     sub.teacher_notes = teacher_notes
     sub.reviewed_at = datetime.utcnow()

@@ -5,8 +5,9 @@ import SecurityViolationModal from './SecurityViolationModal'
 import ProctoringOverlay from './ProctoringOverlay'
 import { useAuth } from '../context/AuthContext'
 import { useNotification } from '../context/NotificationContext'
+import api from '../api/axios'
 
-const API_BASE = 'http://localhost:8000'
+const API_BASE = api.defaults.baseURL
 
 function formatTime(secs) {
   const h = Math.floor(secs / 3600)
@@ -191,7 +192,7 @@ export default function OnlineExam({ exam, onClose, onSubmit, submitting, forceM
             </p>
             <p className="text-slate-500 text-xs mt-0.5">
               {isUploadMode
-                ? 'Write your answers on paper (or in a Word doc), then upload a single PDF, image, or .docx file below.'
+                ? 'Write your answers on paper, then upload a single PDF below.'
                 : 'Type your answers clearly. Label each question (e.g. Q1: ...)'}
             </p>
           </div>
@@ -201,7 +202,7 @@ export default function OnlineExam({ exam, onClose, onSubmit, submitting, forceM
                 <Upload className="w-12 h-12 mb-4 text-slate-600" strokeWidth={1.5} />
                 <input
                   type="file"
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  accept=".pdf,application/pdf"
                   onClick={() => { fileDialogOpenRef.current = true }}
                   onChange={(e) => { fileDialogOpenRef.current = false; setUploadFile(e.target.files?.[0] || null) }}
                   className="text-sm text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-primary file:text-white file:text-sm hover:file:bg-primary-dark"

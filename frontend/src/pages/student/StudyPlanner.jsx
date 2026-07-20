@@ -323,6 +323,8 @@ function AddSessionModal({ onClose, onAdd, enrolledSubjects }) {
         duration_minutes: Number(form.duration_minutes),
       })
       onClose()
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Failed to add session'), 'error')
     } finally {
       setAdding(false)
     }
@@ -709,7 +711,10 @@ export default function StudyPlanner() {
   }
 
   const load = () =>
-    api.get('/study-planner/').then(r => setSessions(r.data)).finally(() => setLoading(false))
+    api.get('/study-planner/')
+      .then(r => setSessions(r.data))
+      .catch((err) => showToast(getErrorMessage(err, 'Failed to load study sessions'), 'error'))
+      .finally(() => setLoading(false))
 
   useEffect(() => { load() }, [])
 
@@ -747,6 +752,8 @@ export default function StudyPlanner() {
     try {
       await api.delete(`/study-planner/${id}`)
       setSessions(prev => prev.filter(s => s.id !== id))
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Failed to delete session'), 'error')
     } finally {
       setDeletingId(null)
     }

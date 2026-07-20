@@ -101,8 +101,8 @@ def generate_study_plan(student_id: int, db: Session, subjects: list = None, goa
         scheduled = datetime.utcnow() + timedelta(days=item.get("days_from_now", 1))
         session = models.StudySession(
             student_id=student_id,
-            topic=item["topic"],
-            subject=item["subject"],
+            topic=item.get("topic", "Study session"),
+            subject=item.get("subject", enrolled_subjects[0] if enrolled_subjects else "General"),
             scheduled_date=scheduled,
             duration_minutes=item.get("duration_minutes", 60),
             tags=json.dumps(item.get("tags", [])),
@@ -233,6 +233,7 @@ def generate_study_content(topic: str, subject: str, activity_type: str) -> dict
             return {"type": "flashcards", "content": json.loads(raw)}
         else:
             return {"type": "markdown", "content": raw}
-    except Exception:
+    except Exception as e:
+        print(f"[generate_study_content] {activity_type} generation for '{topic}' failed: {e}")
         return {"type": "error", "content": "Failed to generate study material. Please try again."}
 

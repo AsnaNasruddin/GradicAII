@@ -129,6 +129,7 @@ export default function OnlineExams() {
         setSubmissions(s.data)
         setBlockedExamIds(new Set(b.data.map(x => x.exam_id)))
       })
+      .catch((err) => showToast(getErrorMessage(err, 'Failed to load exams'), 'error'))
       .finally(() => setLoading(false))
 
   useEffect(() => { fetchData() }, [])
@@ -137,7 +138,9 @@ export default function OnlineExams() {
     const hasProcessing = submissions.some(s => s.status === 'processing')
     if (!hasProcessing) return
     const interval = setInterval(() => {
-      api.get('/submissions/my').then(r => setSubmissions(r.data))
+      api.get('/submissions/my')
+        .then(r => setSubmissions(r.data))
+        .catch(err => console.error('Failed to refresh submission status', err))
     }, 5000)
     return () => clearInterval(interval)
   }, [submissions])

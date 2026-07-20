@@ -144,6 +144,8 @@ def extract_questions(
                 if raw.startswith("json"):
                     raw = raw[4:]
             extracted = json.loads(raw)
+            if not isinstance(extracted, list) or not all(isinstance(q, dict) for q in extracted) or not extracted:
+                raise ValueError("AI returned an unexpected format")
         except Exception as e:
             raise HTTPException(
                 status_code=502,
@@ -165,6 +167,8 @@ def extract_questions(
                 if raw.startswith("json"):
                     raw = raw[4:]
             extracted = json.loads(raw)
+            if not isinstance(extracted, list) or not all(isinstance(q, dict) for q in extracted) or not extracted:
+                raise ValueError("AI returned an unexpected format")
         except Exception as e:
             raise HTTPException(
                 status_code=502,

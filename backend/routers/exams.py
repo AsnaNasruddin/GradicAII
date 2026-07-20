@@ -12,7 +12,7 @@ from services.datetime_utils import to_naive_utc
 
 router = APIRouter()
 
-UPLOAD_DIR = "uploads"
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")  # persistent-disk path in production
 
 
 def save_file(file: UploadFile, subfolder: str) -> str:
@@ -20,8 +20,12 @@ def save_file(file: UploadFile, subfolder: str) -> str:
     ext = os.path.splitext(file.filename)[1]
     filename = f"{uuid.uuid4()}{ext}"
     path = os.path.join(UPLOAD_DIR, subfolder, filename)
-    with open(path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        with open(path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+    except OSError:
+        raise HTTPException(status_code=500, detail="Failed to save uploaded file, please try again")
     return f"/uploads/{subfolder}/{filename}"
 
 

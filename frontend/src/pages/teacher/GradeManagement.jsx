@@ -46,6 +46,26 @@ export default function GradeManagement() {
   const [overrideNote, setOverrideNote] = useState('')
   const [reviewing, setReviewing] = useState(false)
 
+  const openReview = async (s) => {
+    setReviewSub(s)
+    // Prefill with the existing final score (if already reviewed) rather than blank —
+    // otherwise reopening a previously-overridden submission just to view it, then
+    // clicking the default button, would silently reset its score back to the AI's.
+    setOverrideScore(s.final_score != null ? String(Math.round(s.final_score)) : '')
+    setOverrideNote(s.teacher_notes || '')
+    // This is a cheating-review screen — a fetch failure here must not look
+    // identical to "no violations recorded," or a teacher could approve a
+    // submission they'd otherwise have flagged. Log it so it's at least visible.
+    try {
+      const r = await api.get(`/proctoring/screenshots/${s.id}`)
+      setReviewScreenshots(r.data.screenshots || [])
+    } catch (err) { console.error('Failed to load violation screenshots', err); setReviewScreenshots([]) }
+    try {
+      const r = await api.get(`/proctoring/events/${s.id}`)
+      setReviewEvents(r.data || [])
+    } catch (err) { console.error('Failed to load violation events', err); setReviewEvents([]) }
+  }
+
   const submitReview = async (action) => {
     setReviewing(true)
     try {
@@ -112,6 +132,8 @@ export default function GradeManagement() {
     ]).then(([e, s]) => {
       setExams(e.data)
       setSubmissions(s.data)
+    }).catch((err) => {
+      showToast(getErrorMessage(err, 'Failed to load exams'), 'error')
     }).finally(() => setLoading(false))
   }, [])
 
@@ -148,24 +170,32 @@ export default function GradeManagement() {
         if (form.category !== 'ai_quiz' && msRef.current?.files[0]) fd.append('marking_scheme', msRef.current.files[0])
         const res = await api.post('/exams/', fd)
         const exam = res.data
-
-        if (form.category === 'online_exam' && form.submission_format !== 'upload') {
-          await api.post(`/exams/${exam.id}/extract-questions`)
-          await api.post(`/exams/${exam.id}/publish-structured`)
-          exam.is_structured = true
-          if (form.proctoring_enabled) {
-            await api.post(`/exams/${exam.id}/toggle-proctoring`)
-            exam.proctoring_enabled = true
-          }
-        } else if (form.category === 'ai_quiz') {
-          const difficulty = form.quiz_difficulty || 'medium'
-          const params = new URLSearchParams({ difficulty, num_questions: String(form.quiz_num_questions || 8) })
-          if (form.quiz_topics.trim()) params.append('topics', form.quiz_topics.trim())
-          await api.post(`/quizzes/generate/${exam.id}?${params}`)
-          showToast(`${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} AI quiz generated! Students can find it in AI Quizzes.`, 'success')
-        }
-
+        // Add it to state as soon as it exists server-side — if a later setup step
+        // (extract-questions, publish-structured, quiz generation) throws, the exam
+        // must still show up in the list instead of silently vanishing, or the
+        // teacher retrying the form would create a duplicate, orphaned exam.
         setExams((prev) => [...prev, exam])
+
+        try {
+          if (form.category === 'online_exam' && form.submission_format !== 'upload') {
+            await api.post(`/exams/${exam.id}/extract-questions`)
+            await api.post(`/exams/${exam.id}/publish-structured`)
+            exam.is_structured = true
+            if (form.proctoring_enabled) {
+              await api.post(`/exams/${exam.id}/toggle-proctoring`)
+              exam.proctoring_enabled = true
+            }
+            setExams((prev) => prev.map((e) => (e.id === exam.id ? { ...exam } : e)))
+          } else if (form.category === 'ai_quiz') {
+            const difficulty = form.quiz_difficulty || 'medium'
+            const params = new URLSearchParams({ difficulty, num_questions: String(form.quiz_num_questions || 8) })
+            if (form.quiz_topics.trim()) params.append('topics', form.quiz_topics.trim())
+            await api.post(`/quizzes/generate/${exam.id}?${params}`)
+            showToast(`${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} AI quiz generated! Students can find it in AI Quizzes.`, 'success')
+          }
+        } catch (err) {
+          showToast(getErrorMessage(err, 'Exam was created, but automatic setup failed — you can retry Setup Questions from the exam list.'), 'error')
+        }
       }
 
       setShowUpload(false)
@@ -525,12 +555,40 @@ export default function GradeManagement() {
                     <p className="text-xs font-semibold text-rose-500 uppercase tracking-wide mb-2">Violation Screenshots ({reviewScreenshots.length})</p>
                     <div className="grid grid-cols-2 gap-2">
                       {reviewScreenshots.map((url, i) => (
-                        <img key={i} src={`http://localhost:8000${url}`} alt={`Violation ${i+1}`}
+                        <img key={i} src={`${api.defaults.baseURL}${url}`} alt={`Violation ${i+1}`}
                           className="w-full rounded-lg border border-rose-200 object-cover" style={{height:'120px'}} />
                       ))}
                     </div>
                   </div>
                 )}
+
+                {/* Student's actual submission — so the teacher can check the AI's marking against
+                    what the student really wrote before approving or overriding it */}
+                <div className="border border-slate-200 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Student Submission</p>
+                  {reviewSub.digital_text ? (
+                    <div className="bg-slate-50 rounded-lg p-4 max-h-64 overflow-y-auto">
+                      <p className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed">{reviewSub.digital_text}</p>
+                    </div>
+                  ) : reviewSub.answer_sheet_url ? (
+                    <div className="flex items-center gap-3">
+                      {reviewSub.answer_sheet_url.match(/\.(pdf)$/i)
+                        ? <FileText className="w-8 h-8 text-slate-300" strokeWidth={1.5} />
+                        : <Image className="w-8 h-8 text-slate-300" strokeWidth={1.5} />}
+                      <div>
+                        <p className="text-sm font-medium text-slate-700">
+                          {reviewSub.answer_sheet_url.match(/\.(pdf)$/i) ? 'PDF Document' : 'Image File'}
+                        </p>
+                        <a href={`${api.defaults.baseURL}${reviewSub.answer_sheet_url}`} target="_blank" rel="noreferrer"
+                          className="text-sm text-primary hover:underline font-medium">
+                          View / Download →
+                        </a>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-400 italic">No content available</p>
+                  )}
+                </div>
 
                 {/* AI Overall Feedback */}
                 <div className="bg-primary-light border border-violet-100 rounded-xl p-4">
@@ -649,17 +707,7 @@ export default function GradeManagement() {
                   </div>
                   <p className="text-xs text-slate-400">{s.exam_title} · AI Score: <strong className="text-primary">{Math.round(s.ai_score ?? 0)}/{s.total_marks}</strong></p>
                 </div>
-                <button onClick={async () => {
-                    setReviewSub(s); setOverrideScore(''); setOverrideNote('')
-                    try {
-                      const r = await api.get(`/proctoring/screenshots/${s.id}`)
-                      setReviewScreenshots(r.data.screenshots || [])
-                    } catch { setReviewScreenshots([]) }
-                    try {
-                      const r = await api.get(`/proctoring/events/${s.id}`)
-                      setReviewEvents(r.data || [])
-                    } catch { setReviewEvents([]) }
-                  }}
+                <button onClick={() => openReview(s)}
                   className="bg-primary hover:bg-primary-dark text-white text-sm font-semibold px-4 py-2 rounded-lg transition">
                   Review & Approve →
                 </button>
@@ -686,7 +734,8 @@ export default function GradeManagement() {
             ) : submissions.length === 0 ? (
               <tr><td colSpan={5} className="text-center py-8 text-slate-400">No submissions yet</td></tr>
             ) : submissions.map((s) => (
-              <tr key={s.id} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
+              <tr key={s.id} onClick={() => openReview(s)} title="Click to view submission and grading details"
+                className="border-t border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer">
                 <td className="px-5 py-4 text-sm font-medium text-slate-900">{s.student_name || `Student #${s.student_id}`}</td>
                 <td className="px-5 py-4 text-sm text-slate-600">
                   <div>{s.exam_title}</div>

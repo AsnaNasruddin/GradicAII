@@ -5,6 +5,7 @@ import LoadingState from '../../components/LoadingState'
 import useBrowserLock from '../../hooks/useBrowserLock'
 import SecurityViolationModal from '../../components/SecurityViolationModal'
 import { useNotification } from '../../context/NotificationContext'
+import { getErrorMessage } from '../../utils/getErrorMessage'
 
 const DIFF_COLORS = { easy: 'bg-emerald-100 text-emerald-700', medium: 'bg-amber-100 text-amber-700', hard: 'bg-rose-100 text-rose-700' }
 
@@ -30,6 +31,7 @@ export default function AIQuizzes() {
   useEffect(() => {
     Promise.all([api.get('/quizzes/'), api.get('/quizzes/my-attempts')])
       .then(([q, a]) => { setQuizzes(q.data); setAttempts(a.data) })
+      .catch((err) => showToast(getErrorMessage(err, 'Failed to load quizzes'), 'error'))
       .finally(() => setLoading(false))
   }, [])
 
@@ -50,8 +52,13 @@ export default function AIQuizzes() {
       const res = await api.post(`/quizzes/${activeQuiz.id}/attempt`, { answers: finalAnswers, time_spent_seconds: timeSpent })
       setResult(res.data)
       setAttempts((prev) => [...prev, res.data])
-    } catch { 
-      if (!autoSubmit) showToast('Failed to submit quiz', 'error')
+    } catch (err) {
+      if (autoSubmit) {
+        console.error(err)
+        showToast(getErrorMessage(err, 'Your quiz could not be auto-submitted — contact your teacher'), 'error')
+      } else {
+        showToast('Failed to submit quiz', 'error')
+      }
     }
     finally { setSubmitting(false) }
   }

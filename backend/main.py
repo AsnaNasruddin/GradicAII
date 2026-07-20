@@ -18,23 +18,30 @@ with engine.connect() as _conn:
     try:
         _conn.exec_driver_sql("ALTER TABLE assignments ADD COLUMN submission_format TEXT DEFAULT 'both'")
         _conn.commit()
-    except Exception:
-        pass
+    except Exception as e:
+        # Expected to hit here once the column already exists; log anyway so a
+        # genuinely different failure (e.g. permissions, locked db) isn't silent.
+        print(f"[startup migration] add submission_format column skipped: {e}")
     try:
         _conn.exec_driver_sql(
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_submission_exam_student ON submissions (exam_id, student_id)"
         )
         _conn.commit()
-    except Exception:
-        pass
+    except Exception as e:
+        # CREATE UNIQUE INDEX IF NOT EXISTS is already idempotent, so any
+        # exception here is a genuine failure (e.g. pre-existing duplicate
+        # rows violating the constraint) — surface it instead of swallowing it.
+        print(f"[startup migration] uq_submission_exam_student index creation failed: {e}")
     try:
         _conn.exec_driver_sql(
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_assignmentsubmission_assignment_student "
             "ON assignment_submissions (assignment_id, student_id)"
         )
         _conn.commit()
-    except Exception:
-        pass
+    except Exception as e:
+        # Same rationale as above: IF NOT EXISTS already makes this idempotent,
+        # so a real exception here means the constraint failed to install.
+        print(f"[startup migration] uq_assignmentsubmission_assignment_student index creation failed: {e}")
 
 app = FastAPI(title="GradicAI API", version="1.0.0")
 
@@ -57,14 +64,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-os.makedirs("uploads/question_papers", exist_ok=True)
-os.makedirs("uploads/marking_schemes", exist_ok=True)
-os.makedirs("uploads/answer_sheets", exist_ok=True)
-os.makedirs("uploads/assignment_questions", exist_ok=True)
-os.makedirs("uploads/assignment_marking_schemes", exist_ok=True)
-os.makedirs("uploads/assignment_answers", exist_ok=True)
+# Matches the UPLOAD_DIR every router reads uploaded/generated files from —
+# point this at a mounted persistent disk in production (e.g. Render), since
+# the default "uploads" is relative to the container's ephemeral filesystem
+# and would lose every file on the next deploy or restart otherwise.
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
+for _sub in ["question_papers", "marking_schemes", "answer_sheets", "assignment_questions", "assignment_marking_schemes", "assignment_answers"]:
+    os.makedirs(os.path.join(UPLOAD_DIR, _sub), exist_ok=True)
 
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(exams.router, prefix="/exams", tags=["Exams"])

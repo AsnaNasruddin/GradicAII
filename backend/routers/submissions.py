@@ -13,16 +13,26 @@ from services.upload_validation import validate_upload
 
 router = APIRouter()
 
-UPLOAD_DIR = "uploads"
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")  # persistent-disk path in production
 
 
 def save_answer_sheet(file: UploadFile) -> str:
     validate_upload(file)
-    ext = os.path.splitext(file.filename)[1]
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    # Exam answer sheets specifically are PDF-only (stricter than the general
+    # upload allowlist, which also covers teacher-uploaded question papers and
+    # marking schemes) — the camera-capture flow always produces a PDF client-side,
+    # so this doesn't restrict anything legitimate, only the manual-upload path.
+    if ext != ".pdf":
+        raise HTTPException(status_code=400, detail="Answer sheets must be uploaded as a PDF file.")
     filename = f"{uuid.uuid4()}{ext}"
     path = os.path.join(UPLOAD_DIR, "answer_sheets", filename)
-    with open(path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        with open(path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+    except OSError:
+        raise HTTPException(status_code=500, detail="Failed to save uploaded file, please try again")
     return f"/uploads/answer_sheets/{filename}"
 
 

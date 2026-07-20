@@ -34,9 +34,19 @@ export default function Assignments() {
   useEffect(() => {
     Promise.all([api.get('/assignments/'), api.get('/assignments/teacher/all-submissions')])
       .then(([a, s]) => { setAssignments(a.data); setSubmissions(s.data) })
+      .catch((err) => showToast(getErrorMessage(err, 'Failed to load assignments'), 'error'))
       .finally(() => setLoading(false))
   }, [])
 
+
+  const openReview = (s) => {
+    setReviewSub(s)
+    // Prefill with the existing final score (if already reviewed) rather than blank —
+    // otherwise reopening a previously-overridden submission just to view it, then
+    // clicking the default button, would silently reset its score back to the AI's.
+    setOverrideScore(s.final_score != null ? String(Math.round(s.final_score)) : '')
+    setOverrideNote(s.teacher_notes || '')
+  }
 
   const submitReview = async (action) => {
     setReviewing(true)
@@ -129,7 +139,7 @@ export default function Assignments() {
                     {s.ai_score != null && <> · AI Score: <strong className="text-primary">{Math.round(s.ai_score)}/{s.total_marks}</strong></>}
                   </p>
                 </div>
-                <button onClick={() => { setReviewSub(s); setOverrideScore(''); setOverrideNote('') }}
+                <button onClick={() => openReview(s)}
                   className="bg-primary hover:bg-primary-dark text-white text-sm font-semibold px-4 py-2 rounded-lg">
                   {s.status === 'manual_review' || s.status === 'needs_review' ? 'Grade →' : 'Review & Approve →'}
                 </button>
@@ -156,7 +166,8 @@ export default function Assignments() {
             ) : submissions.length === 0 ? (
               <tr><td colSpan={5} className="text-center py-8 text-slate-400">No submissions yet</td></tr>
             ) : submissions.map(s => (
-              <tr key={s.id} className="border-t border-slate-100 hover:bg-slate-50">
+              <tr key={s.id} onClick={() => openReview(s)} title="Click to view submission and grading details"
+                className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer">
                 <td className="px-5 py-4 text-sm font-medium text-slate-900">{s.student_name}</td>
                 <td className="px-5 py-4 text-sm text-slate-600">{s.assignment_title}</td>
                 <td className="px-5 py-4 text-sm font-semibold text-primary">
@@ -179,7 +190,10 @@ export default function Assignments() {
       {reviewSub && (() => {
         let analysis = []
         try { analysis = JSON.parse(reviewSub.question_analysis || '[]') } catch {}
-        const isManual = reviewSub.status === 'manual_review'
+        // Keyed off has_marking_scheme (not status) so this still reads as "manual" after
+        // grading — status flips to "graded" once reviewed, but a no-marking-scheme
+        // assignment never had a real AI score to show, even when reopened later.
+        const isManual = !reviewSub.has_marking_scheme
         return (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setReviewSub(null)}>
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -213,7 +227,7 @@ export default function Assignments() {
                         <p className="text-sm font-medium text-slate-700">
                           {reviewSub.answer_sheet_url.match(/\.(pdf)$/i) ? 'PDF Document' : 'Image File'}
                         </p>
-                        <a href={`http://localhost:8000${reviewSub.answer_sheet_url}`} target="_blank" rel="noreferrer"
+                        <a href={`${api.defaults.baseURL}${reviewSub.answer_sheet_url}`} target="_blank" rel="noreferrer"
                           className="text-sm text-primary hover:underline font-medium">
                           View / Download →
                         </a>

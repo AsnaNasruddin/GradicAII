@@ -5,10 +5,13 @@ import { ClipboardList, Clock, BarChart3, Users, Sparkles, ArrowRight } from 'lu
 import { useAuth } from '../../context/AuthContext'
 import api from '../../api/axios'
 import LoadingState from '../../components/LoadingState'
+import { getErrorMessage } from '../../utils/getErrorMessage'
+import { useNotification } from '../../context/NotificationContext'
 
 export default function Dashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const { showToast } = useNotification()
   const [stats, setStats] = useState(null)
   const [trend, setTrend] = useState([])
   const [dist, setDist] = useState([])
@@ -24,7 +27,8 @@ export default function Dashboard() {
       setStats(s.data)
       setTrend(t.data)
       setDist(d.data)
-    }).finally(() => setLoading(false))
+    }).catch((err) => showToast(getErrorMessage(err, 'Failed to load dashboard'), 'error'))
+      .finally(() => setLoading(false))
   }, [])
 
   if (loading) return <LoadingState />

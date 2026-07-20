@@ -1,6 +1,11 @@
 import { AlertTriangle } from 'lucide-react'
 
-export default function SecurityViolationModal({ onClose }) {
+export default function SecurityViolationModal({
+  onClose,
+  line1 = 'You switched tabs or exited full-screen mode during the exam.',
+  line2 = 'This activity has been logged and your exam has been automatically submitted to prevent academic dishonesty.',
+  footerWarning = 'Any attempt to cheat during an online examination is a serious academic violation and may result in disciplinary action.',
+}) {
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in">
@@ -20,15 +25,15 @@ export default function SecurityViolationModal({ onClose }) {
         {/* Body */}
         <div className="px-6 py-6">
           <p className="text-slate-700 font-medium text-sm leading-relaxed mb-2">
-            You switched tabs or exited full-screen mode during the exam.
+            {line1}
           </p>
           <p className="text-slate-500 text-sm leading-relaxed">
-            This activity has been logged and your exam has been <span className="font-semibold text-rose-600">automatically submitted</span> to prevent academic dishonesty.
+            {line2}
           </p>
 
           <div className="mt-5 bg-rose-50 border border-rose-100 rounded-xl p-4">
             <p className="text-xs text-rose-700 font-medium flex items-start gap-1.5">
-              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" strokeWidth={2} /> Any attempt to cheat during an online examination is a serious academic violation and may result in disciplinary action.
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" strokeWidth={2} /> {footerWarning}
             </p>
           </div>
         </div>

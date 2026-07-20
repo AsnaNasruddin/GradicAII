@@ -5,6 +5,7 @@ import {
   Brain, MessageSquare, SlidersHorizontal, Laptop, Lock, WifiOff, Map, TrendingUp, Sparkles,
   ArrowRight, CheckCircle2, ShieldCheck, ScanLine,
 } from 'lucide-react';
+import Logo from '../components/Logo';
 
 const PRICING_TIERS = [
   {
@@ -54,7 +55,7 @@ export default function LandingPage() {
       {/* Navbar */}
       <nav className="flex items-center justify-between px-4 md:px-8 py-4 border-b border-violet-100 sticky top-0 bg-white/80 backdrop-blur-md z-50">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-white font-bold text-lg font-display">G</div>
+          <Logo className="w-8 h-8" />
           <span className="text-xl font-bold text-slate-900 hidden sm:block font-display">GradicAI</span>
         </div>
         <div className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
@@ -353,7 +354,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto grid sm:grid-cols-2 md:grid-cols-4 gap-10">
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-white font-bold text-lg font-display">G</div>
+              <Logo className="w-8 h-8" />
               <span className="text-xl font-bold text-slate-900 font-display">GradicAI</span>
             </div>
             <p className="text-sm text-slate-500 leading-relaxed">Building the future of educational assessment through responsible and powerful AI.</p>

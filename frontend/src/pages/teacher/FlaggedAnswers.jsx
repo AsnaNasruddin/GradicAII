@@ -3,6 +3,7 @@ import { AlertTriangle, ShieldAlert, CheckCircle2 } from 'lucide-react'
 import api from '../../api/axios'
 import LoadingState from '../../components/LoadingState'
 import { useNotification } from '../../context/NotificationContext'
+import { getErrorMessage } from '../../utils/getErrorMessage'
 
 const FLAG_STYLE = {
   ai_uncertainty: 'bg-orange-100 text-orange-700',
@@ -15,14 +16,16 @@ export default function FlaggedAnswers() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.get('/flagged/').then((r) => setFlags(r.data)).finally(() => setLoading(false))
+    api.get('/flagged/').then((r) => setFlags(r.data))
+      .catch((err) => showToast(getErrorMessage(err, 'Failed to load flagged answers'), 'error'))
+      .finally(() => setLoading(false))
   }, [])
 
   const resolve = async (id, resolved) => {
     try {
       const res = await api.put(`/flagged/${id}/resolve`, { resolved })
       setFlags((prev) => prev.map((f) => (f.id === id ? res.data : f)))
-    } catch { showToast('Failed to resolve flag', 'error') }
+    } catch (err) { showToast(getErrorMessage(err, 'Failed to resolve flag'), 'error') }
   }
 
   const pending = flags.filter((f) => !f.resolved)

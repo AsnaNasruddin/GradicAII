@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Smartphone, BookOpen, Users, UserX, Shuffle, AlertTriangle } from 'lucide-react'
 
-const WS_URL = 'ws://localhost:8001/ws'
+// VITE_PROCTORING_WS_URL is set at build time to the deployed proctoring
+// service's WebSocket URL (must be wss:// once the frontend is served over
+// HTTPS — browsers block plain ws:// from an https:// page as mixed content).
+const WS_URL = import.meta.env.VITE_PROCTORING_WS_URL || 'ws://localhost:8001/ws'
 
 function buildWsUrl(sessionKey, examId, studentId) {
   return `${WS_URL}/${sessionKey}?exam_id=${examId || 0}&student_id=${studentId || 0}`
@@ -74,7 +77,9 @@ export default function ProctoringOverlay({ sessionKey, examId, studentId, onTer
             setWarning({ violation: 'terminated', level: 3, message: data.message, remaining: 0 })
             setTimeout(() => onTerminate(), 3000)
           }
-        } catch {}
+        } catch (err) {
+          console.error('[Proctoring] Failed to parse WS message', err, e?.data)
+        }
       }
     }
     connect()

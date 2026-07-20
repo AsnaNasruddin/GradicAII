@@ -110,6 +110,7 @@ export default function PhysicalExams() {
         setExams(e.data)
         setSubmissions(s.data)
       })
+      .catch((err) => showToast(getErrorMessage(err, 'Failed to load exams'), 'error'))
       .finally(() => setLoading(false))
 
   useEffect(() => { fetchData() }, [])
@@ -118,12 +119,14 @@ export default function PhysicalExams() {
     const hasProcessing = submissions.some(s => s.status === 'processing')
     if (!hasProcessing) return
     const interval = setInterval(() => {
-      api.get('/submissions/my').then(r => setSubmissions(r.data))
+      api.get('/submissions/my')
+        .then(r => setSubmissions(r.data))
+        .catch(err => console.error('Failed to refresh submission status', err))
     }, 5000)
     return () => clearInterval(interval)
   }, [submissions])
 
-  const handleSubmit = async (examId, overrideFile = null, onlineText = null) => {
+  const handleSubmit = async (examId, overrideFile = null, onlineText = null, isViolation = false) => {
     setSubmitting(true)
     try {
       const fd = new FormData()
@@ -143,10 +146,16 @@ export default function PhysicalExams() {
 
       const res = await api.post('/submissions/', fd)
       setSubmissions(prev => [...prev, res.data])
-      setUploadingExam(null)
-      setCameraExamId(null)
-      setTypingExamId(null)
-      setDigitalText('')
+      // On a security-violation auto-submit, leave the camera view mounted so its
+      // SecurityViolationModal stays visible until the student dismisses it —
+      // closing immediately would unmount the modal before they ever read it.
+      // Matches the same isViolation convention already used by OnlineExam/StructuredExam.
+      if (!isViolation) {
+        setUploadingExam(null)
+        setCameraExamId(null)
+        setTypingExamId(null)
+        setDigitalText('')
+      }
     } catch (err) {
       showToast(getErrorMessage(err, err.message || 'Submission failed'), 'error')
     } finally {
@@ -175,7 +184,7 @@ export default function PhysicalExams() {
         <CameraCapture
           submitting={submitting}
           onClose={() => setCameraExamId(null)}
-          onSubmit={(file) => handleSubmit(cameraExamId, file)}
+          onSubmit={(file, isViolation = false) => handleSubmit(cameraExamId, file, null, isViolation)}
         />
       )}
 
@@ -317,9 +326,10 @@ export default function PhysicalExams() {
                           {/* Upload form */}
                           {isOpen && (
                             <div className="mt-4 border border-violet-200 rounded-xl p-4 bg-primary-light">
-                              <p className="text-sm text-slate-700 mb-3 font-medium">Upload your scanned answer sheet (PDF, Word doc, or Image)</p>
-                              <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                              <p className="text-sm text-slate-700 mb-3 font-medium">Upload your scanned answer sheet as a single PDF</p>
+                              <input ref={fileRef} type="file" accept=".pdf,application/pdf"
                                 className="w-full text-sm border border-slate-300 rounded-lg p-2 bg-white" />
+                              <p className="text-xs text-slate-500 mt-1.5">Only PDF files are accepted. Use "Use Camera" above if your answer sheet isn't a PDF yet — it converts your photos to one automatically.</p>
                               <button onClick={() => handleSubmit(exam.id)} disabled={submitting}
                                 className="mt-3 bg-primary hover:bg-primary-dark disabled:opacity-50 text-white text-sm font-semibold px-5 py-2 rounded-lg">
                                 {submitting ? 'Submitting...' : 'Submit Answer Sheet'}

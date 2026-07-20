@@ -89,7 +89,12 @@ def run_grading_ensemble(prompt: str, runs: int = 3) -> dict:
                 response_format={"type": "json_object"},
             )
             results.append(_parse_grading_json(response.choices[0].message.content))
-        except Exception:
+        except Exception as e:
+            # Logged, not silent — otherwise a network/rate-limit/parsing failure
+            # here is indistinguishable from a passing run, and if every seed
+            # fails the only surfaced message is the generic one below with no
+            # way to tell what actually went wrong.
+            print(f"[run_grading_ensemble] seed {seed} failed: {e}")
             continue
     if not results:
         raise ValueError("AI grading returned no valid result")
@@ -164,8 +169,11 @@ def grade_submission(submission_id: int):
             submission.status = "needs_review"
             submission.ai_feedback = f"Grading failed: {str(e)}"
             db.commit()
-        except Exception:
-            pass
+        except Exception as inner_e:
+            print(
+                f"[grade_submission] submission {submission_id} stuck: "
+                f"commit of failure-status also failed: {inner_e}; original error: {e}"
+            )
     finally:
         db.close()
 

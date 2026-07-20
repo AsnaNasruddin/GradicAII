@@ -44,36 +44,45 @@ def analyze_frame(b64_data: str) -> dict:
     """
     try:
         frame = decode_frame(b64_data)
-    except Exception:
+    except Exception as e:
+        # Logged (not silent) — a frame that fails to decode is otherwise
+        # indistinguishable from a clean "ok" frame to anyone watching server
+        # logs, which would hide both a real client bug and a would-be
+        # proctoring bypass (deliberately sending unparseable frames).
+        print(f"[detector] decode_frame failed: {e}")
         return {"violations": [], "person_count": 0, "detections": []}
 
-    model = get_model()
-    results = model(frame, verbose=False, conf=0.25)[0]
+    try:
+        model = get_model()
+        results = model(frame, verbose=False, conf=0.25)[0]
 
-    persons = 0
-    violations = []
-    detections = []
+        persons = 0
+        violations = []
+        detections = []
 
-    for box in results.boxes:
-        cls = int(box.cls[0])
-        conf = float(box.conf[0])
-        label = results.names[cls]
-        detections.append({"class": label, "confidence": round(conf, 2)})
+        for box in results.boxes:
+            cls = int(box.cls[0])
+            conf = float(box.conf[0])
+            label = results.names[cls]
+            detections.append({"class": label, "confidence": round(conf, 2)})
 
-        if cls == PERSON_CLASS:
-            persons += 1
-        elif cls in DETECTION_MAP:
-            vtype = DETECTION_MAP[cls]
-            if vtype not in violations:
-                violations.append(vtype)
+            if cls == PERSON_CLASS:
+                persons += 1
+            elif cls in DETECTION_MAP:
+                vtype = DETECTION_MAP[cls]
+                if vtype not in violations:
+                    violations.append(vtype)
 
-    if persons == 0:
-        violations.append("face_absent")
-    elif persons > 1:
-        violations.append("multiple_persons")
+        if persons == 0:
+            violations.append("face_absent")
+        elif persons > 1:
+            violations.append("multiple_persons")
 
-    return {
-        "violations": violations,
-        "person_count": persons,
-        "detections": detections,
-    }
+        return {
+            "violations": violations,
+            "person_count": persons,
+            "detections": detections,
+        }
+    except Exception as e:
+        print(f"[detector] analyze_frame inference failed: {e}")
+        return {"violations": [], "person_count": 0, "detections": []}

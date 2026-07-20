@@ -3,16 +3,20 @@ import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Cart
 import { FileText, TrendingUp, CheckCircle2, Trophy } from 'lucide-react'
 import api from '../../api/axios'
 import LoadingState from '../../components/LoadingState'
+import { getErrorMessage } from '../../utils/getErrorMessage'
+import { useNotification } from '../../context/NotificationContext'
 
 const COLORS = ['#7C3AED', '#DB2777', '#F59E0B', '#16A34A', '#0891B2']
 
 export default function ProgressTracking() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const { showToast } = useNotification()
 
   useEffect(() => {
     api.get('/analytics/student/progress')
       .then((r) => setData(r.data))
+      .catch((err) => showToast(getErrorMessage(err, 'Failed to load progress data'), 'error'))
       .finally(() => setLoading(false))
   }, [])
 

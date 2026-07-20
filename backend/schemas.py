@@ -156,6 +156,8 @@ class SubmissionOut(BaseModel):
     student_name: Optional[str] = None
     submission_type: str
     status: str
+    answer_sheet_url: Optional[str] = None
+    digital_text: Optional[str] = None
     ai_score: Optional[float]
     ai_feedback: Optional[str]
     question_analysis: Optional[str]

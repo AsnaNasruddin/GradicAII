@@ -22,15 +22,23 @@ app = FastAPI(title="GradicAI Proctoring Service", version="1.0.0")
 
 INTERNAL_KEY = os.getenv("PROCTORING_INTERNAL_KEY", "")
 
+# ALLOWED_ORIGINS holds the deployed frontend's real origin (e.g. your Vercel
+# URL) in production; the regex keeps every localhost port working for local
+# dev regardless of which one Vite picks. Same pattern as backend/main.py.
+ALLOWED_ORIGINS = [o for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
-    allow_credentials=True,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-MAIN_API = "http://localhost:8000"
+# MAIN_API_URL is the deployed backend's URL (e.g. your Render backend service) —
+# this is how the proctoring service reports violation events back to it.
+MAIN_API = os.getenv("MAIN_API_URL", "http://localhost:8000")
 
 # In-memory session state: session_id → {warning_count, terminated}
 sessions: dict = {}
@@ -148,8 +156,12 @@ async def proctoring_ws(websocket: WebSocket, session_id: str, exam_id: int = 0,
                                 headers={"X-Internal-Key": INTERNAL_KEY},
                                 timeout=5.0,
                             )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        # Best-effort by design (the live warning still reached the
+                        # student either way) — but silent until now, so a wrong
+                        # internal key or an unreachable backend could drop every
+                        # violation's audit trail with no trace anywhere.
+                        print(f"[ws {session_id}] failed to report '{primary}' event to backend: {e}")
 
                 elif msg_type == "tab_switch":
                     if state["cooldown"] > 0:
@@ -195,8 +207,8 @@ async def proctoring_ws(websocket: WebSocket, session_id: str, exam_id: int = 0,
                                 headers={"X-Internal-Key": INTERNAL_KEY},
                                 timeout=5.0,
                             )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(f"[ws {session_id}] failed to report tab_switch event to backend: {e}")
 
                 elif msg_type == "ping":
                     await websocket.send_text(json.dumps({"type": "pong"}))
@@ -206,6 +218,14 @@ async def proctoring_ws(websocket: WebSocket, session_id: str, exam_id: int = 0,
 
             except json.JSONDecodeError:
                 pass
+            except Exception as e:
+                # Best-effort: don't let a single bad frame kill the whole
+                # proctoring session (mirrors the httpx best-effort blocks above).
+                print(f"[ws {session_id}] frame processing failed: {e}")
+                try:
+                    await websocket.send_text(json.dumps({"type": "ok"}))
+                except Exception:
+                    pass
 
     except WebSocketDisconnect:
         pass

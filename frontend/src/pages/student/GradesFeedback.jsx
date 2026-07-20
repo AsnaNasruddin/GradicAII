@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import api from '../../api/axios'
 import LoadingState from '../../components/LoadingState'
+import { getErrorMessage } from '../../utils/getErrorMessage'
+import { useNotification } from '../../context/NotificationContext'
 
 function AssignmentDetailsModal({ sub, assignment, onClose }) {
   if (!sub) return null
@@ -96,6 +98,7 @@ function greeting() {
 export default function GradesFeedback() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const { showToast } = useNotification()
   const [quizzes, setQuizzes] = useState([])
   const [quizAttempts, setQuizAttempts] = useState([])
   const [assignments, setAssignments] = useState([])
@@ -118,7 +121,8 @@ export default function GradesFeedback() {
       setAssignments(a.data)
       setAssignSubs(as.data.filter(sub => sub.status === 'graded'))
       setExamSubs(es.data.filter(sub => sub.status === 'graded'))
-    }).finally(() => setLoading(false))
+    }).catch((err) => showToast(getErrorMessage(err, 'Failed to load your grades'), 'error'))
+      .finally(() => setLoading(false))
   }, [])
 
   if (loading) return <LoadingState label="Loading feedback..." />

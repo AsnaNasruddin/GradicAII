@@ -3,6 +3,8 @@ import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveCo
 import { GraduationCap, Clock, Users, Sparkles } from 'lucide-react'
 import api from '../../api/axios'
 import LoadingState from '../../components/LoadingState'
+import { useNotification } from '../../context/NotificationContext'
+import { getErrorMessage } from '../../utils/getErrorMessage'
 
 export default function ClassAnalytics() {
   const [stats, setStats] = useState(null)
@@ -11,6 +13,7 @@ export default function ClassAnalytics() {
   const [performers, setPerformers] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedSubject, setSelectedSubject] = useState(null)
+  const { showToast } = useNotification()
 
   useEffect(() => {
     Promise.all([
@@ -23,7 +26,8 @@ export default function ClassAnalytics() {
       setTrend(t.data)
       setSubjectPerf(s.data)
       setPerformers(p.data)
-    }).finally(() => setLoading(false))
+    }).catch((err) => showToast(getErrorMessage(err, 'Failed to load analytics'), 'error'))
+      .finally(() => setLoading(false))
   }, [])
 
   if (loading) return <LoadingState />

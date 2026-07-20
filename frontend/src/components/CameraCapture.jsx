@@ -1,8 +1,25 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { X, RotateCcw, CameraOff, Image, CheckCircle2, Loader2 } from 'lucide-react'
+import { X, RotateCcw, CameraOff, Image as ImageIcon, CheckCircle2, Loader2, Clock, AlertTriangle } from 'lucide-react'
 import jsPDF from 'jspdf'
+import { useNotification } from '../context/NotificationContext'
+import { getErrorMessage } from '../utils/getErrorMessage'
+import useBrowserLock from '../hooks/useBrowserLock'
+import SecurityViolationModal from './SecurityViolationModal'
+
+// How long a student has, once they open the camera, to photograph their pages
+// and submit — independent of the exam's own duration_minutes (that field is
+// how long the physical paper exam itself lasted, a separate concept from how
+// long digitizing/submitting the already-written answer sheet should take).
+const CAPTURE_SESSION_MINUTES = 10
+
+function formatTime(secs) {
+  const m = Math.floor(secs / 60).toString().padStart(2, '0')
+  const s = (secs % 60).toString().padStart(2, '0')
+  return `${m}:${s}`
+}
 
 export default function CameraCapture({ onSubmit, onClose, submitting }) {
+  const { showToast } = useNotification()
   const videoRef = useRef(null)
   const streamRef = useRef(null)
   const [facingMode, setFacingMode] = useState('environment') // environment=back, user=front
@@ -12,6 +29,17 @@ export default function CameraCapture({ onSubmit, onClose, submitting }) {
   const [dragIdx, setDragIdx] = useState(null)
   const [cameraReady, setCameraReady] = useState(false)
   const [cameraError, setCameraError] = useState('')
+  const [timeLeft, setTimeLeft] = useState(CAPTURE_SESSION_MINUTES * 60)
+  const [endReason, setEndReason] = useState(null) // null | 'violation' | 'timeout'
+  const [sessionEnded, setSessionEnded] = useState(false) // time/violation hit with nothing captured
+  const timerRef = useRef(null)
+  const photosRef = useRef(photos)
+  const autoEndedRef = useRef(false)
+  // The camera permission prompt is native browser chrome that steals window
+  // focus exactly like a real tab-switch would — suppress violation detection
+  // until the prompt has actually been resolved (cameraReady or cameraError set).
+  const pausedRef = useRef(true)
+  photosRef.current = photos
 
   const startCamera = useCallback(async (mode) => {
     setCameraReady(false)
@@ -40,6 +68,46 @@ export default function CameraCapture({ onSubmit, onClose, submitting }) {
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop())
     }
   }, [facingMode, startCamera])
+
+  // Once the camera permission prompt has actually been resolved (granted or
+  // denied), start watching for tab-switches/lost focus.
+  useEffect(() => {
+    if (cameraReady || cameraError) pausedRef.current = false
+  }, [cameraReady, cameraError])
+
+  const endSession = useCallback((reason) => {
+    if (autoEndedRef.current) return
+    autoEndedRef.current = true
+    clearInterval(timerRef.current)
+    setEndReason(reason)
+    if (photosRef.current.length > 0) {
+      // Photos already exist — submit what's there rather than discard captured
+      // work, matching the app's existing "auto-submit whatever you have" policy
+      // for online-exam tab-switch/timeout violations.
+      buildPdfAndSubmit(reason === 'violation')
+      if (reason === 'timeout') {
+        showToast("Time's up — your captured pages have been submitted automatically.", 'info')
+      }
+    } else {
+      setSessionEnded(true)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useBrowserLock(() => endSession('violation'), pausedRef)
+
+  useEffect(() => {
+    timerRef.current = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current)
+          endSession('timeout')
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(timerRef.current)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const capture = () => {
     if (!videoRef.current || !cameraReady) return
@@ -72,29 +140,63 @@ export default function CameraCapture({ onSubmit, onClose, submitting }) {
   }
   const onDragEnd = () => setDragIdx(null)
 
-  const buildPdfAndSubmit = async () => {
-    if (photos.length === 0) return
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-    const pageW = pdf.internal.pageSize.getWidth()
-    const pageH = pdf.internal.pageSize.getHeight()
+  const buildPdfAndSubmit = async (isViolation = false) => {
+    // Reads photosRef, not the closed-over `photos` state — endSession (memoized
+    // once at mount so the timer/tab-lock callbacks always call the same function
+    // identity) would otherwise call back into this render's stale `photos`
+    // closure instead of whatever has actually been captured since.
+    const currentPhotos = photosRef.current
+    if (currentPhotos.length === 0) return
+    try {
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const pageW = pdf.internal.pageSize.getWidth()
+      const pageH = pdf.internal.pageSize.getHeight()
 
-    for (let i = 0; i < photos.length; i++) {
-      if (i > 0) pdf.addPage()
-      const img = new Image()
-      img.src = photos[i].dataUrl
-      await new Promise(res => { img.onload = res })
-      // Fit image to A4 preserving aspect ratio
-      const ratio = Math.min(pageW / img.width, pageH / img.height)
-      const w = img.width * ratio
-      const h = img.height * ratio
-      const x = (pageW - w) / 2
-      const y = (pageH - h) / 2
-      pdf.addImage(photos[i].dataUrl, 'JPEG', x, y, w, h)
+      for (let i = 0; i < currentPhotos.length; i++) {
+        if (i > 0) pdf.addPage()
+        const img = new Image()
+        img.src = currentPhotos[i].dataUrl
+        await new Promise((res, rej) => {
+          img.onload = res
+          img.onerror = () => rej(new Error('Failed to load captured photo'))
+        })
+        // Fit image to A4 preserving aspect ratio
+        const ratio = Math.min(pageW / img.width, pageH / img.height)
+        const w = img.width * ratio
+        const h = img.height * ratio
+        const x = (pageW - w) / 2
+        const y = (pageH - h) / 2
+        pdf.addImage(currentPhotos[i].dataUrl, 'JPEG', x, y, w, h)
+      }
+
+      const blob = pdf.output('blob')
+      const file = new File([blob], `camera_submission_${Date.now()}.pdf`, { type: 'application/pdf' })
+      onSubmit(file, isViolation)
+    } catch (err) {
+      console.error('buildPdfAndSubmit failed', err)
+      showToast(getErrorMessage(err, 'Failed to build PDF — please retry'), 'error')
     }
+  }
 
-    const blob = pdf.output('blob')
-    const file = new File([blob], `camera_submission_${Date.now()}.pdf`, { type: 'application/pdf' })
-    onSubmit(file)
+  if (sessionEnded) {
+    const isViolation = endReason === 'violation'
+    return (
+      <div className="fixed inset-0 bg-slate-950 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden text-center px-8 py-10">
+          <div className="w-16 h-16 mx-auto mb-5 bg-rose-100 rounded-full flex items-center justify-center">
+            <AlertTriangle className="w-8 h-8 text-rose-600" strokeWidth={2} />
+          </div>
+          <h2 className="text-lg font-bold text-slate-900 mb-2">Capture Session Ended</h2>
+          <p className="text-slate-500 text-sm leading-relaxed mb-8">
+            {isViolation
+              ? 'You switched tabs, lost focus, or exited full-screen mode. No pages had been captured yet, so nothing was submitted — this attempt has been logged.'
+              : `Your ${CAPTURE_SESSION_MINUTES}-minute capture window ran out before you photographed any pages, so nothing was submitted.`}
+            {' '}You can start again from the exam page.
+          </p>
+          <button onClick={onClose} className="w-full bg-primary hover:bg-primary-dark text-white font-semibold py-3 rounded-xl transition">Close</button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -107,13 +209,18 @@ export default function CameraCapture({ onSubmit, onClose, submitting }) {
         <span className="text-white font-semibold text-sm">
           {preview ? 'Preview Photos' : `Camera  ${photos.length > 0 ? `· ${photos.length} photo${photos.length > 1 ? 's' : ''}` : ''}`}
         </span>
-        <button
-          onClick={() => setFacingMode(m => m === 'environment' ? 'user' : 'environment')}
-          className="text-white text-sm hover:text-slate-300 flex items-center gap-1"
-          title="Switch camera"
-        >
-          <RotateCcw className="w-4 h-4" strokeWidth={2} /> Flip
-        </button>
+        <div className="flex items-center gap-3">
+          <span className={`px-2.5 py-1 rounded-lg font-mono font-bold text-xs flex items-center gap-1.5 ${timeLeft <= 120 ? 'bg-rose-600 text-white animate-pulse' : 'bg-slate-700 text-emerald-400'}`}>
+            <Clock className="w-3.5 h-3.5" strokeWidth={2} /> {formatTime(timeLeft)}
+          </span>
+          <button
+            onClick={() => setFacingMode(m => m === 'environment' ? 'user' : 'environment')}
+            className="text-white text-sm hover:text-slate-300 flex items-center gap-1"
+            title="Switch camera"
+          >
+            <RotateCcw className="w-4 h-4" strokeWidth={2} /> Flip
+          </button>
+        </div>
       </div>
 
       {!preview ? (
@@ -163,7 +270,7 @@ export default function CameraCapture({ onSubmit, onClose, submitting }) {
               <button onClick={() => photos.length > 0 && setPreview(true)}
                 disabled={photos.length === 0}
                 className="text-white text-sm disabled:opacity-30 flex flex-col items-center gap-1">
-                <Image className="w-6 h-6" strokeWidth={1.5} />
+                <ImageIcon className="w-6 h-6" strokeWidth={1.5} />
                 <span className="text-xs">Preview</span>
               </button>
 
@@ -175,7 +282,7 @@ export default function CameraCapture({ onSubmit, onClose, submitting }) {
               </button>
 
               {/* Submit btn */}
-              <button onClick={buildPdfAndSubmit}
+              <button onClick={() => buildPdfAndSubmit()}
                 disabled={photos.length === 0 || submitting}
                 className="text-white text-sm disabled:opacity-30 flex flex-col items-center gap-1">
                 {submitting ? <Loader2 className="w-6 h-6 animate-spin" strokeWidth={2} /> : <CheckCircle2 className="w-6 h-6" strokeWidth={1.5} />}
@@ -216,12 +323,21 @@ export default function CameraCapture({ onSubmit, onClose, submitting }) {
               className="flex-1 border border-slate-600 text-white font-semibold py-3 rounded-xl hover:bg-slate-800">
               ← Back to Camera
             </button>
-            <button onClick={buildPdfAndSubmit} disabled={submitting}
+            <button onClick={() => buildPdfAndSubmit()} disabled={submitting}
               className="flex-1 bg-primary hover:bg-primary-dark disabled:opacity-50 text-white font-semibold py-3 rounded-xl">
               {submitting ? 'Creating PDF...' : `Submit ${photos.length} Page${photos.length > 1 ? 's' : ''}`}
             </button>
           </div>
         </div>
+      )}
+
+      {endReason === 'violation' && (
+        <SecurityViolationModal
+          onClose={() => setEndReason(null)}
+          line1="You switched tabs, lost focus, or exited full-screen mode while capturing your answer sheet."
+          line2="Your already-captured pages have been automatically submitted to prevent academic dishonesty."
+          footerWarning="Any attempt to cheat while submitting a physical exam answer sheet is a serious academic violation and may result in disciplinary action."
+        />
       )}
     </div>
   )

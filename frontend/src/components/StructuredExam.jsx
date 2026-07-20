@@ -33,7 +33,10 @@ function useVoiceInput(onResult) {
         .map(res => res[0].transcript).join('')
       onResult(transcript)
     }
-    r.onerror = () => { setListening(false) }
+    r.onerror = () => {
+      setListening(false)
+      showToast('Voice input failed — check microphone permissions and try again.', 'error')
+    }
     r.onend = () => { setListening(false) }
     r.start()
     recogRef.current = r
@@ -123,7 +126,10 @@ export default function StructuredExam({ exam, onClose, onSubmit, submitting }) 
   answersRef.current = answers
 
   useEffect(() => {
-    api.get(`/exams/${exam.id}/questions`).then(r => setQuestions(r.data)).finally(() => setLoading(false))
+    api.get(`/exams/${exam.id}/questions`)
+      .then(r => setQuestions(r.data))
+      .catch(err => showToast(getErrorMessage(err, 'Failed to load exam questions'), 'error'))
+      .finally(() => setLoading(false))
   }, [exam.id])
 
   useBrowserLock(() => {
@@ -159,13 +165,18 @@ export default function StructuredExam({ exam, onClose, onSubmit, submitting }) 
 
   const handleSubmit = async (auto = false) => {
     clearInterval(timerRef.current)
+    // Reads answersRef (not answers) — the timer/useBrowserLock effects below only
+    // ever call the handleSubmit closure captured at mount, so reading the `answers`
+    // state variable directly here would submit whatever it was at mount time (empty)
+    // instead of what the student has actually typed since.
+    const currentAnswers = answersRef.current
     const payload = {
       exam_id: exam.id,
       answers: questions.map(q => ({
         question_id: q.id,
-        answer_text: answers[q.id]?.answer_text || null,
-        selected_option: answers[q.id]?.selected_option || null,
-        is_voice_answer: answers[q.id]?.is_voice_answer || false,
+        answer_text: currentAnswers[q.id]?.answer_text || null,
+        selected_option: currentAnswers[q.id]?.selected_option || null,
+        is_voice_answer: currentAnswers[q.id]?.is_voice_answer || false,
       })),
     }
     try {
@@ -181,7 +192,10 @@ export default function StructuredExam({ exam, onClose, onSubmit, submitting }) 
 
   const isLow = timeLeft <= 300
   const q = questions[current]
-  const opts = q ? (() => { try { return JSON.parse(q.options || '[]') } catch { return [] } })() : []
+  const opts = q ? (() => {
+    try { return JSON.parse(q.options || '[]') }
+    catch (err) { console.error(`Malformed options JSON for question ${q.id}`, err, q.options); return [] }
+  })() : []
 
   if (loading) return (
     <div className="fixed inset-0 bg-slate-950 z-50 flex items-center justify-center">

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { ClipboardList, Monitor, FileCheck2, FileText, TrendingUp, Calendar, Brain, LogOut, Menu, X, GraduationCap, HelpCircle } from 'lucide-react'
+import { ClipboardList, Monitor, FileCheck2, FileText, TrendingUp, Calendar, Brain, LogOut, Menu, X, HelpCircle } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
+import Logo from '../../components/Logo'
 
 const nav = [
   { to: '/student/grades', icon: ClipboardList, label: 'Grades & Feedback' },
@@ -31,9 +32,7 @@ export default function StudentLayout() {
       <aside className={`fixed md:static inset-y-0 left-0 z-40 w-64 bg-white border-r border-violet-100 flex flex-col flex-shrink-0 transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
         <div className="px-5 py-6 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 bg-primary rounded-xl flex items-center justify-center text-white flex-shrink-0">
-              <GraduationCap className="w-5 h-5" strokeWidth={2} />
-            </div>
+            <Logo className="w-9 h-9 flex-shrink-0" />
             <span className="font-display font-bold text-lg text-slate-900">Gradic<span className="text-primary">AI</span></span>
           </div>
           <button onClick={() => setSidebarOpen(false)} className="md:hidden text-slate-400 hover:text-slate-600">
