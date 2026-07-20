@@ -14,7 +14,9 @@ from dotenv import load_dotenv
 import httpx
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-load_dotenv(os.path.join(os.path.dirname(__file__), "..", "backend", ".env"))
+# Load env vars: Render injects them directly; for local dev, fall back to backend/.env
+load_dotenv()  # picks up Render env vars or local .env in cwd
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", "backend", ".env"))  # local dev fallback
 
 from detector import analyze_frame, get_model
 
@@ -23,14 +25,18 @@ app = FastAPI(title="GradicAI Proctoring Service", version="1.0.0")
 INTERNAL_KEY = os.getenv("PROCTORING_INTERNAL_KEY", "")
 
 # ALLOWED_ORIGINS holds the deployed frontend's real origin (e.g. your Vercel
-# URL) in production; the regex keeps every localhost port working for local
-# dev regardless of which one Vite picks. Same pattern as backend/main.py.
+# URL) in production; the regex below already covers every localhost port for
+# local dev regardless of which one Vite picks, so no default is needed here.
 ALLOWED_ORIGINS = [o for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
+    # Also matches any *.vercel.app subdomain automatically — covers preview
+    # deployments without needing ALLOWED_ORIGINS updated for every one.
+    allow_origin_regex=r"(http://(localhost|127\.0\.0\.1):\d+)|(https://.*\.vercel\.app)",
+    # False (not True) — auth here is a shared internal-key header between
+    # services, never a cookie, matching backend/main.py's identical CORS setup.
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
